@@ -1588,9 +1588,16 @@ void DepthMapsData::FuseDepthMaps(PointCloud& pointcloud, bool bEstimateColor, b
 				if (idxPoint != NO_ID)
 					continue;
 				// create the corresponding 3D point
+				// (sub-scene fusion) skip points outside the scene ROI at
+				// insertion: bounded tile scenes otherwise accumulate their
+				// images' FULL footprints and only crop after fusion, holding
+				// 2-3x the tile's points at peak (OOM on tiled runs).
+				const Point3 X3(imageData.camera.TransformPointI2W(Point3(Point2f(x),depth)));
+				if (scene.IsBounded() && !scene.obb.Intersects(Cast<float>(X3)))
+					continue;
 				idxPoint = (uint32_t)pointcloud.points.size();
 				PointCloud::Point& point = pointcloud.points.emplace_back();
-				point = imageData.camera.TransformPointI2W(Point3(Point2f(x),depth));
+				point = X3;
 				PointCloud::ViewArr& views = pointcloud.pointViews.emplace_back();
 				views.emplace_back(idxImage);
 				PointCloud::WeightArr& weights = pointcloud.pointWeights.emplace_back();
