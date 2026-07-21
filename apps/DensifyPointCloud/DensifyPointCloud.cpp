@@ -61,6 +61,7 @@ String strDenseConfigFileName;
 String strExportDepthMapsName;
 String strMaskPath;
 float fMaxSubsceneArea;
+float fSubsceneMargin;
 float fSampleMesh;
 float fSampleMeshNeighbors;
 float fBorderROI;
@@ -169,6 +170,7 @@ bool Application::Initialize(size_t argc, LPCTSTR* argv)
 		("estimate-scale", boost::program_options::value(&OPT::fEstimateScale)->default_value(0.f), "estimate the point-scale for the dense point-cloud (scale multiplier, 0 - disabled)")
 		("estimate-segmentation", boost::program_options::value(&OPT::nEstimateSegmentation)->default_value(0), "estimate segmentation of the dense point-cloud based on the image segmentation masks; num views to agree (0 - disabled, <0 - only segmentation)")
 		("sub-scene-area", boost::program_options::value(&OPT::fMaxSubsceneArea)->default_value(0.f), "split the scene in sub-scenes such that each sub-scene surface does not exceed the given maximum sampling area (0 - disabled)")
+		("sub-scene-margin", boost::program_options::value(&OPT::fSubsceneMargin)->default_value(0.3f), "when splitting the scene in sub-scenes, also include in each sub-scene the strongest images observing a 5% band around the sub-scene box, capped at this fraction of the sub-scene's kept image count, preserving cross-border view support during per-sub-scene fusion while keeping its memory bounded; the sub-scene ROI itself is not enlarged (0 - disabled)")
 		("sample-mesh", boost::program_options::value(&OPT::fSampleMesh)->default_value(0.f), "uniformly samples points on a mesh (0 - disabled, <0 - number of points, >0 - sample density per square unit)")
 		("fusion-mode", boost::program_options::value(&OPT::nFusionMode)->default_value(0), "depth-maps fusion mode (-2 - fuse disparity-maps, -1 - export disparity-maps only, 0 - depth-maps & fusion, 1 - export depth-maps only)")
 		("fusion-filter", boost::program_options::value(&nFuseFilter)->default_value(2), "filter used to fuse the depth-maps (0 - merge, 1 - fuse, 2 - dense-fuse)")
@@ -443,7 +445,7 @@ int main(int argc, LPCTSTR* argv)
 	if (OPT::fMaxSubsceneArea > 0) {
 		// split the scene in sub-scenes by maximum sampling area
 		Scene::ImagesChunkArr chunks;
-		scene.Split(chunks, OPT::fMaxSubsceneArea);
+		scene.Split(chunks, OPT::fMaxSubsceneArea, 8/*depthMapStep*/, OPT::fSubsceneMargin);
 		scene.ExportChunks(chunks, GET_PATH_FULL(OPT::strOutputFileName), (ARCHIVE_TYPE)OPT::nArchiveType);
 		return EXIT_SUCCESS;
 	}

@@ -1165,7 +1165,7 @@ bool Scene::ExportLinesPLY(const String& fileName, const CLISTDEF0IDX(Line3f,uin
 //    can load all sub-scene's depth-maps into memory at once
 //  - limit in the same time maximum accumulated images resolution (total number of pixels)
 //    per sub-scene in order to allow all images to be loaded and processed during mesh refinement
-unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep) const
+unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep, float subsceneMargin) const
 {
 	TD_TIMER_STARTD();
 	// gather samples from all depth-maps
@@ -1175,8 +1175,10 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep) c
 	Octree octree;
 	FloatArr areas(0, images.size()*4192);
 	IIndexArr visibility(0, (IIndex)areas.capacity());
+	// gaosfm: samples hoisted to function scope so the octree stays queryable
+	// (Collect needs item positions) for the sub-scene margin pass below
+	Samples samples(0, (uint32_t)areas.capacity());
 	Unsigned32Arr imageAreas(images.size()); {
-		Samples samples(0, (uint32_t)areas.capacity());
 		FOREACH(idxImage, images) {
 			const Image& imageData = images[idxImage];
 			if (!imageData.IsValid())
@@ -1229,7 +1231,7 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep) c
 		octree.GetDebugInfo(&info);
 		Octree::LogDebugInfo(info);
 		#endif
-		octree.ResetItems();
+		// gaosfm: no octree.ResetItems() — the margin pass below still queries it
 	}
 	struct AreaInserter {
 		const FloatArr& areas;
@@ -1381,6 +1383,45 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep) c
 				DEBUG_ULTIMATE("warning: chunk bounding box is empty");
 				chunks.RemoveAt(c);
 			}
+		}
+	}
+	// gaosfm: sub-scene margin — restore cross-chunk view support at chunk
+	// borders. The contribution-based pruning above removes images that mostly
+	// observe a NEIGHBORING chunk, so points near a chunk border lose their
+	// cross-border confirming views, fail the fusion min-view test, and the
+	// merged tiled cloud comes out depleted in bands along every seam. Re-add
+	// the strongest such observers: candidates are images with depth samples
+	// inside the chunk box enlarged 5% per side, ranked by their sample count
+	// there, capped at subsceneMargin x the kept-image count. The cap is what
+	// keeps per-tile fusion memory bounded: with image footprints comparable
+	// to the tile size EVERY image observes every tile, so an uncapped re-add
+	// rebuilds near-global image sets and fusion OOMs (border points only need
+	// a few extra confirming views, not all of them). Only the image SET
+	// grows: chunk.aabb stays strict, fusion still crops points to it at
+	// insert, so tiles keep partitioning the scene with no duplicate points.
+	if (subsceneMargin > 0) {
+		FOREACH(c, chunks) {
+			ImagesChunk& chunk = chunks[c];
+			AABB3f aabbMargin(chunk.aabb);
+			aabbMargin.EnlargePercent(1.1f);
+			Octree::IDXARR_TYPE indices;
+			octree.Collect(indices, aabbMargin);
+			Unsigned32Arr candidateAreas(images.size());
+			candidateAreas.Memset(0);
+			for (Octree::IDX_TYPE idx: indices) {
+				const IIndex idxImage(visibility[idx]);
+				if (chunk.images.find(idxImage) == chunk.images.end())
+					++candidateAreas[idxImage];
+			}
+			std::vector<std::pair<uint32_t,IIndex>> ranked;
+			FOREACH(idxImage, images)
+				if (candidateAreas[idxImage] > 0)
+					ranked.emplace_back(candidateAreas[idxImage], idxImage);
+			std::sort(ranked.begin(), ranked.end(), std::greater<std::pair<uint32_t,IIndex>>());
+			const size_t numExtra(MINF(ranked.size(), (size_t)(subsceneMargin*(float)chunk.images.size()+0.5f)));
+			for (size_t i=0; i<numExtra; ++i)
+				chunk.images.emplace(ranked[i].second);
+			DEBUG_EXTRA("Chunk %u: %u images (%u margin of %u candidates)", c, (unsigned)chunk.images.size(), (unsigned)numExtra, (unsigned)ranked.size());
 		}
 	}
 	DEBUG_EXTRA("Scene split (%g max-area): %u chunks (%s)", maxArea, chunks.size(), TD_TIMER_GET_FMT().c_str());
