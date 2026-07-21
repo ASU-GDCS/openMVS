@@ -1,6 +1,6 @@
 # Add applications
-ADD_SUBDIRECTORY(CreateStructure)
-ADD_SUBDIRECTORY(ExtractKeyframes)
+#ADD_SUBDIRECTORY(CreateStructure)  # gaosfm: depends on SFM
+#ADD_SUBDIRECTORY(ExtractKeyframes)  # gaosfm: depends on SFM
 ADD_SUBDIRECTORY(InterfaceCOLMAP)
 ADD_SUBDIRECTORY(InterfaceMetashape)
 ADD_SUBDIRECTORY(InterfaceMVSNet)

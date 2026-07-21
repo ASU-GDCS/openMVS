@@ -2,7 +2,7 @@
 ADD_SUBDIRECTORY(Common)
 ADD_SUBDIRECTORY(Math)
 ADD_SUBDIRECTORY(IO)
-ADD_SUBDIRECTORY(SFM)
+#ADD_SUBDIRECTORY(SFM)  # gaosfm: SFM needs vcpkg-only TinyEXIF/TinyNPY/PoseLib; unused by gao_sfm
 ADD_SUBDIRECTORY(MVS)
 
 # Install
