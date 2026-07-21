@@ -851,9 +851,45 @@ Util::MemoryInfo Util::GetMemoryInfo()
 		ASSERT(false);
 		return MemoryInfo();
 	}
+	size_t totalPhysical((size_t)info.totalram*(size_t)info.mem_unit);
+	size_t freePhysical((size_t)info.freeram*(size_t)info.mem_unit);
+	// Respect cgroup memory limits (Slurm jobs, containers): sysinfo() reports
+	// NODE-wide RAM, so memory-adaptive logic (e.g. the depth-map fusion cache)
+	// otherwise overshoots the job's allocation and gets OOM-killed. Clamp
+	// total/free to the cgroup limit/headroom when one is set (v2 then v1).
+	{
+		auto readSize = [](const char* path, size_t& value) -> bool {
+			FILE* f = fopen(path, "r");
+			if (f == NULL)
+				return false;
+			char buf[64];
+			const bool ok(fgets(buf, sizeof(buf), f) != NULL);
+			fclose(f);
+			if (!ok || buf[0] < '0' || buf[0] > '9')
+				return false; // "max" or unreadable => unlimited
+			value = (size_t)strtoull(buf, NULL, 10);
+			return true;
+		};
+		size_t limit(0), usage(0);
+		const bool haveLimit(
+			(readSize("/sys/fs/cgroup/memory.max", limit) &&
+			 readSize("/sys/fs/cgroup/memory.current", usage)) ||
+			(readSize("/sys/fs/cgroup/memory/memory.limit_in_bytes", limit) &&
+			 readSize("/sys/fs/cgroup/memory/memory.usage_in_bytes", usage)));
+		if (haveLimit && limit > 0 && limit < totalPhysical) {
+			// Hold back a reserve: OpenMVS's memory-adaptive consumers (fusion
+			// dmap cache) size themselves to the reported free memory with thin
+			// internal margins and get OOM-killed exactly at the cgroup limit
+			// (observed MaxRSS == limit). 10% of the limit, at least 2 GiB.
+			const size_t reserve(MAXF(limit/10, size_t(2ull<<30)));
+			const size_t headroom(limit > usage + reserve ? limit - usage - reserve : size_t(0));
+			totalPhysical = limit;
+			freePhysical = MINF(freePhysical, headroom);
+		}
+	}
 	return MemoryInfo(
-		(size_t)info.totalram*(size_t)info.mem_unit,
-		(size_t)info.freeram*(size_t)info.mem_unit,
+		totalPhysical,
+		freePhysical,
 		(size_t)info.totalswap*(size_t)info.mem_unit,
 		(size_t)info.freeswap*(size_t)info.mem_unit
 	);
