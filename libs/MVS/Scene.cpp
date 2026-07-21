@@ -1187,8 +1187,8 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep) c
 				continue;
 			const IIndex numPointsBegin(visibility.size());
 			const Camera camera(imageData.GetCamera(platforms, depthData.depthMap.size()));
-			for (int r=(depthData.depthMap.rows%depthMapStep)/2; r<depthData.depthMap.rows; r++) {
-				for (int c=(depthData.depthMap.cols%depthMapStep)/2; c<depthData.depthMap.cols; c++) {
+			for (int r=(depthData.depthMap.rows%depthMapStep)/2; r<depthData.depthMap.rows; r+=depthMapStep) {
+				for (int c=(depthData.depthMap.cols%depthMapStep)/2; c<depthData.depthMap.cols; c+=depthMapStep) {
 					const Depth depth = depthData.depthMap(r,c);
 					if (depth <= 0)
 						continue;
