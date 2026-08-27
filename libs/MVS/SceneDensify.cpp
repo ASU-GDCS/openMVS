@@ -232,7 +232,8 @@ bool DepthMapsData::SelectViews(DepthData& depthData)
 	const IIndex idxImage((IIndex)(&depthData-arrDepthData.Begin()));
 	ASSERT(depthData.neighbors.IsEmpty());
 	if (scene.images[idxImage].neighbors.empty() &&
-		!scene.SelectNeighborViews(idxImage, depthData.points, OPTDENSE::nMinViews, OPTDENSE::nMinViewsTrustPoint>1?OPTDENSE::nMinViewsTrustPoint:2, FD2R(OPTDENSE::fOptimAngle), OPTDENSE::fWeightPointInsideROI))
+		!scene.SelectNeighborViews(idxImage, depthData.points, OPTDENSE::nMinViews, OPTDENSE::nMinViewsTrustPoint>1?OPTDENSE::nMinViewsTrustPoint:2, FD2R(OPTDENSE::fOptimAngle), OPTDENSE::fWeightPointInsideROI) &&
+		!SeedNeighborViewsFromCachedDepthMap(idxImage))
 		return false;
 	depthData.neighbors.CopyOf(scene.images[idxImage].neighbors);
 
@@ -248,6 +249,53 @@ bool DepthMapsData::SelectViews(DepthData& depthData)
 	}
 	return true;
 } // SelectViews
+
+// gao-sfm: when the scene's sparse points cannot score any neighbour for this
+// image, fall back to the views recorded in its cached depth-map.
+// In a sub-scene (tiled fusion) the sparse cloud is cropped to the tile ROI, so
+// an image at the survey edge — few sparse points to begin with — can lose the
+// shared points that scored its neighbours in the global estimation pass and is
+// then dropped from fusion ("not enough images in view") although its depth-map
+// is cached and was estimated with perfectly good neighbours (Test4 3840 strip:
+// whole edge footprints missing, 5 % of the untiled coverage, at no tile seam).
+// The .dmap stores the reference and neighbour view IDs it was estimated from;
+// those present in this scene become the neighbours, in estimation order, with
+// scores that pass the InitViews/FilterNeighborViews gates.
+bool DepthMapsData::SeedNeighborViewsFromCachedDepthMap(IIndex idxImage)
+{
+	Image& imageData = scene.images[idxImage];
+	const String path(ComposeDepthFilePath(imageData.ID, "dmap"));
+	if (!File::access(path))
+		return false;
+	String storedImageFileName;
+	IIndexArr storedIDs;
+	cv::Size storedImageSize;
+	KMatrix K; RMatrix R; CMatrix C;
+	Depth dMin, dMax;
+	DepthMap _d; NormalMap _n; ConfidenceMap _c; ViewsMap _v;
+	if (!ImportDepthDataRaw(path, storedImageFileName, storedIDs, storedImageSize,
+			K, R, C, dMin, dMax, _d, _n, _c, _v, 0))
+		return false;
+	if (storedIDs.size() < 2 || storedIDs.front() != imageData.ID || imageData.image.size() != storedImageSize)
+		return false;
+	imageData.neighbors.Empty();
+	for (IIndex i=1; i<storedIDs.size(); ++i) {
+		const IIndex idxNeighbor(ImageID2Index(scene.images, storedIDs[i]));
+		if (idxNeighbor == NO_ID || idxNeighbor == idxImage || !scene.images[idxNeighbor].IsValid())
+			continue;
+		ViewScore& neighbor = imageData.neighbors.AddEmpty();
+		neighbor.ID = idxNeighbor;
+		neighbor.points = 0;
+		neighbor.scale = 1.f;
+		neighbor.angle = FD2R(OPTDENSE::fOptimAngle);
+		neighbor.area = 1.f;
+		neighbor.score = 1.f - 0.001f*(float)i; // keep the estimation order
+	}
+	if (imageData.neighbors.empty())
+		return false;
+	DEBUG_EXTRA("reference image %3u: %u of %u neighbour views seeded from its cached depth-map (no scorable sparse points in this scene)", idxImage, imageData.neighbors.size(), storedIDs.size()-1);
+	return true;
+} // SeedNeighborViewsFromCachedDepthMap
 /*----------------------------------------------------------------*/
 
 // select target image for the reference image (the first image in "images"),

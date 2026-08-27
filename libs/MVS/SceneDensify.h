@@ -68,6 +68,7 @@ public:
 	DepthMapsData& operator=(const DepthMapsData&) = delete;
 
 	bool SelectViews(DepthData& depthData);
+	bool SeedNeighborViewsFromCachedDepthMap(IIndex idxImage);
 	bool InitViews(DepthData& depthData, IIndex idxNeighbor, IIndex numNeighbors, bool loadImages, int loadDepthMaps);
 	bool InitDepthMap(DepthData& depthData);
 	bool EstimateDepthMap(IIndex idxImage, int nGeometricIter);
