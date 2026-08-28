@@ -297,7 +297,10 @@ bool DepthMapsData::SeedNeighborViewsFromCachedDepthMap(IIndex idxImage)
 		neighbor.scale = 1.f;
 		neighbor.angle = FD2R(OPTDENSE::fOptimAngle);
 		neighbor.area = 1.f;
-		neighbor.score = 1.f - 0.001f*(float)i; // keep the estimation order
+		// Far above any View Min Score / View Min Score Ratio gate in InitViews
+		// (OpenMVS default View Min Score is 2.0; real scores are points×area
+		// in the thousands) while keeping the estimation order.
+		neighbor.score = 1e6f - (float)i;
 	}
 	if (imageData.neighbors.empty())
 		return false;
