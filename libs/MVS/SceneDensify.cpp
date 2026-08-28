@@ -645,6 +645,11 @@ DepthData DepthMapsData::ScaleDepthData(const DepthData& inputDeptData, float sc
 //  - nGeometricIter: current geometric-consistent estimation iteration (-1 - normal patch-match)
 bool DepthMapsData::EstimateDepthMap(IIndex idxImage, int nGeometricIter)
 {
+	#if TD_VERBOSE != TD_VERBOSE_OFF
+	if (VERBOSITY_LEVEL > 2)
+		VERBOSE("diag: EstimateDepthMap image %3u geomIter %d (images %u, depthMap %dx%d)", idxImage, nGeometricIter,
+			arrDepthData[idxImage].images.size(), arrDepthData[idxImage].depthMap.cols, arrDepthData[idxImage].depthMap.rows);
+	#endif
 	#ifdef _USE_CUDA
 	if (!pmCUDAPool.empty()) {
 		// claim a pool slot for this worker thread; epoch invalidates the claim
@@ -1504,8 +1509,13 @@ std::tuple<unsigned, unsigned, unsigned> FetchBestNextDMapIndex(const DepthDataA
 	unsigned bestImageScore = 0, bestImageSize = std::numeric_limits<unsigned>::max();
 	FOREACH(idxImage, arrDepthData) {
 		const DepthData& depthData = arrDepthData[idxImage];
-		if (!depthData.IsValid())
+		if (!depthData.IsValid()) {
+			#if TD_VERBOSE != TD_VERBOSE_OFF
+			if (VERBOSITY_LEVEL > 2 && cachedImages.empty())
+				VERBOSE("diag: fusion skips image %3u: no views (images %u, neighbours %u, size %dx%d)", idxImage, depthData.images.size(), depthData.neighbors.size(), depthData.size.width, depthData.size.height);
+			#endif
 			continue;
+		}
 		if (fusedDMaps[idxImage])
 			continue;
 		ASSERT(!depthData.neighbors.empty());
@@ -2466,9 +2476,18 @@ void Scene::DenseReconstructionEstimate(void* pData)
 				return data.scene.images[idxImg].image.size() == storedImageSize;
 			};
 			const bool depthmapComputed(data.nFusionMode < 0 || (data.nFusionMode >= 0 && data.nEstimationGeometricIter < 0 && isCachedDmapUsable(idx)));
+			#if TD_VERBOSE != TD_VERBOSE_OFF
+			if (VERBOSITY_LEVEL > 2)
+				VERBOSE("diag: image %3u (ID %u) geomIter %d cached-usable %s image %dx%d", idx, data.scene.images[idx].ID, data.nEstimationGeometricIter,
+					depthmapComputed ? "yes" : "no", data.scene.images[idx].image.cols, data.scene.images[idx].image.rows);
+			#endif
 			// initialize images pair: reference image and the best neighbor view
 			ASSERT(data.neighborsMap.IsEmpty() || data.neighborsMap[evtImage.idxImage] != NO_ID);
 			if (!data.depthMaps.InitViews(depthData, data.neighborsMap.IsEmpty()?NO_ID:data.neighborsMap[evtImage.idxImage], OPTDENSE::nNumViews, !depthmapComputed, depthmapComputed ? -1 : (data.nEstimationGeometricIter >= 0 ? 1 : 0))) {
+				#if TD_VERBOSE != TD_VERBOSE_OFF
+				if (VERBOSITY_LEVEL > 2)
+					VERBOSE("diag: image %3u InitViews FAILED (neighbours %u)", idx, depthData.neighbors.size());
+				#endif
 				// process next image
 				data.events.AddEvent(new EVTProcessImage((IIndex)Thread::safeInc(data.idxImage)));
 				break;
