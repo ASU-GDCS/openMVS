@@ -231,9 +231,17 @@ bool DepthMapsData::SelectViews(DepthData& depthData)
 	// find and sort valid neighbor views
 	const IIndex idxImage((IIndex)(&depthData-arrDepthData.Begin()));
 	ASSERT(depthData.neighbors.IsEmpty());
+	// gao-sfm: an image whose depth-map is already cached fuses against the
+	// views that estimated it (recorded in the .dmap), not against a neighbour
+	// set re-scored from this scene's sparse points. In a sub-scene (tiled
+	// fusion) the sparse cloud is cropped to the tile ROI, so the re-scored
+	// lists are thinner and different for EVERY image, and fusion — which needs
+	// neighbours to agree on each depth — confirms fewer points (Test4 3840
+	// strip: tiled 221 M pts / 96.8 % coverage vs untiled 297 M / 97.8 % from
+	// the same depth-maps). Without a cached depth-map the scoring is unchanged.
 	if (scene.images[idxImage].neighbors.empty() &&
-		!scene.SelectNeighborViews(idxImage, depthData.points, OPTDENSE::nMinViews, OPTDENSE::nMinViewsTrustPoint>1?OPTDENSE::nMinViewsTrustPoint:2, FD2R(OPTDENSE::fOptimAngle), OPTDENSE::fWeightPointInsideROI) &&
-		!SeedNeighborViewsFromCachedDepthMap(idxImage))
+		!SeedNeighborViewsFromCachedDepthMap(idxImage) &&
+		!scene.SelectNeighborViews(idxImage, depthData.points, OPTDENSE::nMinViews, OPTDENSE::nMinViewsTrustPoint>1?OPTDENSE::nMinViewsTrustPoint:2, FD2R(OPTDENSE::fOptimAngle), OPTDENSE::fWeightPointInsideROI))
 		return false;
 	depthData.neighbors.CopyOf(scene.images[idxImage].neighbors);
 
@@ -293,7 +301,7 @@ bool DepthMapsData::SeedNeighborViewsFromCachedDepthMap(IIndex idxImage)
 	}
 	if (imageData.neighbors.empty())
 		return false;
-	DEBUG_EXTRA("reference image %3u: %u of %u neighbour views seeded from its cached depth-map (no scorable sparse points in this scene)", idxImage, imageData.neighbors.size(), storedIDs.size()-1);
+	DEBUG_EXTRA("reference image %3u: %u of %u neighbour views seeded from its cached depth-map", idxImage, imageData.neighbors.size(), storedIDs.size()-1);
 	return true;
 } // SeedNeighborViewsFromCachedDepthMap
 /*----------------------------------------------------------------*/
