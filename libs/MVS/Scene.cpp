@@ -1165,7 +1165,15 @@ bool Scene::ExportLinesPLY(const String& fileName, const CLISTDEF0IDX(Line3f,uin
 //    can load all sub-scene's depth-maps into memory at once
 //  - limit in the same time maximum accumulated images resolution (total number of pixels)
 //    per sub-scene in order to allow all images to be loaded and processed during mesh refinement
-unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep, float subsceneMargin) const
+// gaosfm: split2D partitions in X/Y only (full-height sub-scene columns) instead of
+// letting the octree also cut in Z. A Z cut puts the survey's empty airspace -- the
+// volume between the cameras and the surface, which carries no depth samples but does
+// fall inside the scene box -- in its own chunk: that sub-scene fuses its images in
+// full and then throws away nearly every point at the ROI trim (Maug 2026-09, chunk 2:
+// 57.3M points fused, 224K kept, 0% of the sparse cloud inside its ROI, 33 min wasted).
+// Surveys of a single ground/seafloor surface have nothing to gain from a Z cut, since
+// the surface itself is what the area budget is measuring.
+unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep, float subsceneMargin, bool split2D) const
 {
 	TD_TIMER_STARTD();
 	// gather samples from all depth-maps
@@ -1178,6 +1186,8 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep, f
 	// gaosfm: samples hoisted to function scope so the octree stays queryable
 	// (Collect needs item positions) for the sub-scene margin pass below
 	Samples samples(0, (uint32_t)areas.capacity());
+	AABB3f splitAABB(true); // the box the octree was built over; supplies the 2-D split's chunk height
+
 	Unsigned32Arr imageAreas(images.size()); {
 		FOREACH(idxImage, images) {
 			const Image& imageData = images[idxImage];
@@ -1223,6 +1233,17 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep, f
 			return obbSamples.GetAABB();
 			#endif
 		}());
+		// gaosfm: 2-D split -- collapse every sample onto the box's mid-Z plane so the
+		// octree can only ever subdivide in X/Y (a Z cut then separates nothing and its
+		// candidate half-splits score area 0, which _SplitVolume never selects). The
+		// cells stay cubic and the chunk boxes come out only as tall as the cell that
+		// produced them, so the true height is restored on each chunk below.
+		if (split2D) {
+			const float midZ(aabb.GetCenter().z());
+			FOREACH(i, samples)
+				samples[i].z() = midZ;
+		}
+		splitAABB = aabb;
 		octree.Insert(samples, aabb, [](Octree::IDX_TYPE size, Octree::Type /*radius*/) {
 			return size > 128;
 		});
@@ -1289,6 +1310,18 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep, f
 	octree.SplitVolume(maxArea, areaEstimator, chunkInserter);
 	if (chunks.size() < 2)
 		return 0;
+	// gaosfm: 2-D split -- give each chunk the scene's full height. The samples were
+	// flattened for the subdivision, so the boxes SplitVolume derived from the octree
+	// cells are only one cell tall about the mid-Z plane; left that way they would trim
+	// away the relief the chunk is responsible for. X/Y stay exactly as split, so the
+	// chunks still partition the survey with no overlap.
+	if (split2D) {
+		FOREACH(c, chunks) {
+			AABB3f& aabbChunk = chunks[c].aabb;
+			aabbChunk.ptMin.z() = splitAABB.ptMin.z();
+			aabbChunk.ptMax.z() = splitAABB.ptMax.z();
+		}
+	}
 	// remove images with very little contribution
 	const float minImageContributionRatio(0.3f);
 	FOREACH(c, chunks) {
@@ -1424,7 +1457,18 @@ unsigned Scene::Split(ImagesChunkArr& chunks, float maxArea, int depthMapStep, f
 			DEBUG_EXTRA("Chunk %u: %u images (%u margin of %u candidates)", c, (unsigned)chunk.images.size(), (unsigned)numExtra, (unsigned)ranked.size());
 		}
 	}
-	DEBUG_EXTRA("Scene split (%g max-area): %u chunks (%s)", maxArea, chunks.size(), TD_TIMER_GET_FMT().c_str());
+	// gaosfm: the chunk boxes are what each sub-scene's fusion gets trimmed to,
+	// so log them -- a 2-D split must give every chunk the same full Z range,
+	// and a chunk whose box holds no surface is the airspace tile to hunt.
+	FOREACH(c, chunks) {
+		const AABB3f& aabbChunk = chunks[c].aabb;
+		DEBUG_EXTRA("Chunk %u box: X [%g %g] Y [%g %g] Z [%g %g]", c,
+			aabbChunk.ptMin.x(), aabbChunk.ptMax.x(),
+			aabbChunk.ptMin.y(), aabbChunk.ptMax.y(),
+			aabbChunk.ptMin.z(), aabbChunk.ptMax.z());
+	}
+	DEBUG_EXTRA("Scene split (%g max-area, %s): %u chunks (%s)", maxArea,
+		split2D ? "2-D" : "3-D", chunks.size(), TD_TIMER_GET_FMT().c_str());
 	#if 0 || defined(_DEBUG)
 	// dump chunks for visualization
 	FOREACH(c, chunks) {

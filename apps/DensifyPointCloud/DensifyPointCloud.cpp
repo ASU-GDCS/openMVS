@@ -63,6 +63,7 @@ String strMaskPath;
 float fMaxSubsceneArea;
 float fSubsceneMargin;
 int nSubsceneStep;
+bool bSubscene2D;
 float fSampleMesh;
 float fSampleMeshNeighbors;
 float fBorderROI;
@@ -172,6 +173,7 @@ bool Application::Initialize(size_t argc, LPCTSTR* argv)
 		("estimate-segmentation", boost::program_options::value(&OPT::nEstimateSegmentation)->default_value(0), "estimate segmentation of the dense point-cloud based on the image segmentation masks; num views to agree (0 - disabled, <0 - only segmentation)")
 		("sub-scene-area", boost::program_options::value(&OPT::fMaxSubsceneArea)->default_value(0.f), "split the scene in sub-scenes such that each sub-scene surface does not exceed the given maximum sampling area (0 - disabled)")
 		("sub-scene-step", boost::program_options::value(&OPT::nSubsceneStep)->default_value(8), "when splitting the scene in sub-scenes, sample every N-th depth-map pixel (rows and columns) to build the scene surface samples; larger values cut split time and memory on high-resolution scenes (8 - upstream default)")
+		("sub-scene-2d", boost::program_options::value(&OPT::bSubscene2D)->default_value(true), "when splitting the scene in sub-scenes, partition in X/Y only so every sub-scene is a full-height column (1 - default); the 3-D octree split otherwise cuts in Z as well and gives the empty airspace between the cameras and the surface its own sub-scene, which fuses in full and is then discarded at the ROI trim (0 - upstream 3-D behaviour)")
 		("sub-scene-margin", boost::program_options::value(&OPT::fSubsceneMargin)->default_value(0.3f), "when splitting the scene in sub-scenes, also include in each sub-scene the strongest images observing a 5% band around the sub-scene box, capped at this fraction of the sub-scene's kept image count, preserving cross-border view support during per-sub-scene fusion while keeping its memory bounded; the sub-scene ROI itself is not enlarged (0 - disabled)")
 		("sample-mesh", boost::program_options::value(&OPT::fSampleMesh)->default_value(0.f), "uniformly samples points on a mesh (0 - disabled, <0 - number of points, >0 - sample density per square unit)")
 		("fusion-mode", boost::program_options::value(&OPT::nFusionMode)->default_value(0), "depth-maps fusion mode (-2 - fuse disparity-maps, -1 - export disparity-maps only, 0 - depth-maps & fusion, 1 - export depth-maps only)")
@@ -447,7 +449,7 @@ int main(int argc, LPCTSTR* argv)
 	if (OPT::fMaxSubsceneArea > 0) {
 		// split the scene in sub-scenes by maximum sampling area
 		Scene::ImagesChunkArr chunks;
-		scene.Split(chunks, OPT::fMaxSubsceneArea, MAXF(1, OPT::nSubsceneStep), OPT::fSubsceneMargin);
+		scene.Split(chunks, OPT::fMaxSubsceneArea, MAXF(1, OPT::nSubsceneStep), OPT::fSubsceneMargin, OPT::bSubscene2D);
 		scene.ExportChunks(chunks, GET_PATH_FULL(OPT::strOutputFileName), (ARCHIVE_TYPE)OPT::nArchiveType);
 		return EXIT_SUCCESS;
 	}
