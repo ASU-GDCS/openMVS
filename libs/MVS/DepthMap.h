@@ -124,6 +124,7 @@ extern MVS_API float fWeightPointInsideROI;
 extern MVS_API float fDescriptorMinMagnitudeThreshold;
 extern MVS_API float fDepthReprojectionErrorThreshold;
 extern MVS_API float fDepthDiffThreshold;
+extern MVS_API float fDepthRangeMargin;
 extern MVS_API float fNormalDiffThreshold;
 extern MVS_API float fPairwiseMul;
 extern MVS_API float fOptimizerEps;

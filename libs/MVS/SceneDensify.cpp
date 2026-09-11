@@ -477,8 +477,8 @@ bool DepthMapsData::InitViews(DepthData& depthData, IIndex idxNeighbor, IIndex n
 					if (depthData.dMax < d)
 						depthData.dMax = d;
 				}
-				depthData.dMin *= 0.9f;
-				depthData.dMax *= 1.1f;
+				depthData.dMin *= 1.f - OPTDENSE::fDepthRangeMargin;
+				depthData.dMax *= 1.f + OPTDENSE::fDepthRangeMargin;
 			}
 		} else {
 			ASSERT(!depthData.points.empty());
@@ -501,8 +501,8 @@ bool DepthMapsData::InitDepthMap(DepthData& depthData)
 	TriangulatePoints2DepthMap(image.camera, image.image.size(), scene.pointcloud, depthData.points,
 		depthData.depthMap, depthData.normalMap, depthData.dMin, depthData.dMax,
 		OPTDENSE::bAddCorners && image.pImageData->avgDepth > 0 ? image.pImageData->avgDepth : 0.f, OPTDENSE::bInitSparse);
-	depthData.dMin *= 0.9f;
-	depthData.dMax *= 1.1f;
+	depthData.dMin *= 1.f - OPTDENSE::fDepthRangeMargin;
+	depthData.dMax *= 1.f + OPTDENSE::fDepthRangeMargin;
 
 	#if TD_VERBOSE != TD_VERBOSE_OFF
 	// save rough depth map as image
