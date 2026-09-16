@@ -524,6 +524,9 @@ kernel void FilterPlanes(device float4* planes [[buffer(1)]],
     if ((int)gid.x >= width || (int)gid.y >= height) return;
     const int idx = gid.y*width + gid.x;
     if (planes[idx].w <= 0 || costs[idx] >= prm.fThresholdKeepCost) {
-        costs[idx] = 0; planes[idx] = float4(0); selectedViews[idx] = 0;
+        // costs[] is deliberately left untouched, matching PatchMatchCUDA.cu where the
+        // cost is read into a local (its `conf = 0` never reaches memory); zeroing it
+        // here would map every filtered pixel to confidence 1.0 in the 1-cost readback
+        planes[idx] = float4(0); selectedViews[idx] = 0;
     }
 }
