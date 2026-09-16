@@ -39,6 +39,9 @@ LIST(REMOVE_ITEM LIBRARY_FILES_C "${PATH_PythonWrapper_cpp}")
 # them as a string (compiled at runtime via newLibraryWithSource) by generating
 # PatchMatchMetal_msl.h into the build dir at configure time.
 if(_USE_METAL)
+	# re-run configure when the kernels change; otherwise an ordinary build keeps
+	# compiling the stale embedded header
+	set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/PatchMatchMetal.metal")
 	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/PatchMatchMetal.metal" _PATCHMATCH_MSL_SRC)
 	file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PatchMatchMetal_msl.h"
 "// AUTO-GENERATED at configure time from PatchMatchMetal.metal -- do not edit.
