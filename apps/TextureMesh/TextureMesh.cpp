@@ -280,7 +280,7 @@ int main(int argc, LPCTSTR* argv)
 		return EXIT_FAILURE;
 	}
 	const String baseFileName(MAKE_PATH_SAFE(Util::getFileFullName(OPT::strOutputFileName)));
-	if (OPT::nOrthoMapResolution && !scene.mesh.HasTexture()) {
+	if (OPT::nOrthoMapResolution && scene.mesh.HasTexture()) {
 		// the input mesh is already textured and an orthographic projection was requested
 		goto ProjectOrtho;
 	}
