@@ -10,6 +10,11 @@ macro(pkg_check_modules_fullpath_libs PREFIX MODULE_NAME)
 			set(lib_ext "")
 			if(WIN32)
 				set(lib_ext ".lib")
+			elseif(APPLE)
+				# Homebrew ships shared jpeg-xl only; the static ".a" guess below
+				# falls back to a bare -ljxl with no search path on macOS
+				set(lib_prefix "lib")
+				set(lib_ext ".dylib")
 			else()
 				set(lib_prefix "lib")
 				set(lib_ext ".a")
